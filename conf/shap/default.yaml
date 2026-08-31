@@ -1,0 +1,4 @@
+compute_shap: true
+shap_alg: permutation  # [sampling, permutation]
+num_samples_shap: 2000
+output_path_shap:

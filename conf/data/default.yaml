@@ -4,6 +4,8 @@ defaults:
   - crop_type: mouth
 frames_per_gpu_val: 500
 noise_path:
+vid_dist_type: none
+vid_dist_level: 3
 lrs2_video_dir:
 lrs2_audio_dir:
 lrs3_video_dir:

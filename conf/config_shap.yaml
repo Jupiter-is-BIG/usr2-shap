@@ -1,0 +1,22 @@
+defaults:
+  - data: default
+  - debug: no_debug
+  - decode: default
+  - logger: default
+  - logging: default
+  - model: default
+  - shap: default
+  - trainer: test
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+project_name: usr2_shap
+num_workers: 4
+log_wandb: False
+# torch.compile fights per-coalition dynamic masking (constant recompilation
+# guard failures) and the SHAP loop bypasses the compiled top-level forward
+# anyway (it calls into encoder/decoder submodules directly), so it's off
+# by default for SHAP runs.
+compile_model: False
+gpus:

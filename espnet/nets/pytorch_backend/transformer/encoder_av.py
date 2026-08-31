@@ -95,6 +95,51 @@ class Encoder(torch.nn.Module):
         self.linear_v = nn.Linear(idim, attention_dim)
         self.linear_av = nn.Linear(2*idim, attention_dim)
 
+    def run_frontend(self, xs_v=None, xs_a=None):
+        """Run the modality-specific CNN frontends only (no fusion/transformer).
+
+        Exposed separately from forward() so that callers who need to run the
+        (cheap) fusion+transformer stack many times over different maskings of
+        the same utterance -- e.g. SHAP attribution -- only need to pay for the
+        (expensive) CNN frontends once. See fuse_from_frontend().
+
+        :param torch.Tensor xs_v: video input tensor (optional)
+        :param torch.Tensor xs_a: audio input tensor (optional)
+        :return: tuple of (frontend_v_output, frontend_a_output), either may be None
+        :rtype: tuple[torch.Tensor, torch.Tensor]
+        """
+        out_v = self.frontend_v(xs_v) if xs_v is not None else None
+        out_a = self.frontend_a(xs_a) if xs_a is not None else None
+        return out_v, out_a
+
+    def fuse_from_frontend(self, xs_v_front, xs_a_front, masks=None):
+        """Fuse pre-computed audio/video frontend outputs and run the transformer stack.
+
+        This reproduces exactly the audiovisual branch of forward()'s
+        single-modality path (xs_v and xs_a both given, return_all=False):
+        concatenate -> linear_av -> positional embed -> encoder layers -> after_norm.
+        Factored out so it can be re-run cheaply per SHAP coalition on masked
+        copies of the frontend outputs, without re-running the CNN frontends.
+
+        :param torch.Tensor xs_v_front: video frontend output (B, T, idim)
+        :param torch.Tensor xs_a_front: audio frontend output (B, T, idim)
+        :param torch.Tensor masks: input mask (B, 1, T)
+        :return: fused audiovisual encoded tensor (B, T, attention_dim)
+        :rtype: torch.Tensor
+        """
+        xs = self.linear_av(torch.cat([xs_v_front, xs_a_front], dim=-1))
+
+        if masks is None:
+            masks = torch.ones(xs.shape[0], 1, xs.shape[1], dtype=torch.bool, device=xs.device)
+
+        xs = self.embed(xs)
+        xs, masks = self.encoders(xs, masks)
+
+        if isinstance(xs, tuple):
+            xs = xs[0]
+
+        return self.after_norm(xs)
+
     def forward(self, xs_v=None, xs_a=None, masks=None, return_all=False):
         """Encode input sequence.
 

@@ -3,6 +3,8 @@ import random
 import numpy as np
 import torch
 
+from .video_distortion import FRAME_DISTORTION_TYPES, distortion_vid
+
 
 def normalize(clip, mean, std, inplace=False):
     assert clip.ndimension() == 4, "clip should be a 4D torch.tensor"
@@ -47,3 +49,26 @@ class AddNoise:
             factor = (sig_power / noise_clip_power) / (10 ** (snr_target / 10.0))
             desired_signal = (signal + noise_clip * np.sqrt(factor)).astype(np.float32)
             return torch.unsqueeze(torch.tensor(desired_signal, device=device), 0)
+
+
+class VideoDistortion:
+    """
+    Applies a fixed-type/fixed-severity visual corruption (color, blur,
+    block-wise, or JPEG-style compression) to a raw C x T x H x W clip,
+    mirroring AddNoise's role for audio: it lets us sweep visual degradation
+    the same way decode.snr_target sweeps acoustic degradation.
+    """
+
+    def __init__(self, dist_type, dist_level=3):
+        assert dist_type in FRAME_DISTORTION_TYPES + ["random"], (
+            f"dist_type must be one of {FRAME_DISTORTION_TYPES + ['random']}, got {dist_type!r}. "
+            "'VC' (video compression) is not supported here since a per-sample ffmpeg subprocess "
+            "is too slow inside a DataLoader; call video_distortion.distortion_vid(..., dist_type='VC', "
+            "vid_in_path=...) directly instead."
+        )
+        self.dist_type = dist_type
+        self.dist_level = dist_level
+
+    def __call__(self, video):
+        # video: C x T x H x W, RGB, pre-normalization (0-255 range).
+        return distortion_vid(video, dist_type=self.dist_type, dist_level=self.dist_level)

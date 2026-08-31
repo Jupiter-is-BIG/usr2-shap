@@ -11,7 +11,7 @@ from torchvision.transforms import (
 
 from .dataset import AVDataset
 from .samplers import ByFrameCountSampler, DistributedSamplerWrapper, RandomSamplerWrapper
-from .transforms import AddNoise, NormalizeVideo
+from .transforms import AddNoise, NormalizeVideo, VideoDistortion
 
 
 def pad(samples, pad_val=0.0):
@@ -59,7 +59,13 @@ class USRDataModule(LightningDataModule):
 
     def _video_transform(self):
         args = self.cfg.data
-        transform = [
+        transform = []
+        vid_dist_type = getattr(args, "vid_dist_type", None)
+        if vid_dist_type not in (None, "none"):
+            transform.append(
+                VideoDistortion(vid_dist_type, getattr(args, "vid_dist_level", 3))
+            )
+        transform += [
             Lambda(lambda x: x / 255.),
             CenterCrop(args.crop_type.random_crop_dim),
             Resize(args.crop_type.resize_dim),

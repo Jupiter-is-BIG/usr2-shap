@@ -3,10 +3,9 @@ from hydra.utils import instantiate
 from pytorch_lightning import LightningModule
 
 from espnet.asr.asr_utils import add_results_to_json, torch_load
-from espnet.nets.batch_beam_search import BatchBeamSearch
 from espnet.nets.pytorch_backend.nets_utils import make_non_pad_mask
-from espnet.nets.scorers.length_bonus import LengthBonus
 from metrics import WER
+from utils.beam_search_utils import build_beam_search
 from utils.utils import ids_to_str, set_requires_grad, UNIGRAM1000_LIST
 
 
@@ -37,30 +36,8 @@ class USREvaluator(LightningModule):
 
     def get_beam_search(self, model):
         token_list = UNIGRAM1000_LIST
-        odim = len(token_list)
         self.token_list = token_list
-
-        scorers = model.scorers()
-
-        scorers["length_bonus"] = LengthBonus(len(token_list))
-
-        weights = dict(
-            decoder=1.0 - self.cfg.decode.ctc_weight,
-            ctc=self.cfg.decode.ctc_weight,
-            length_bonus=self.cfg.decode.penalty,
-        )
-        beam_search = BatchBeamSearch(
-            beam_size=self.cfg.decode.beam_size,
-            vocab_size=len(token_list),
-            weights=weights,
-            scorers=scorers,
-            sos=odim - 1,
-            eos=odim - 1,
-            token_list=token_list,
-            pre_beam_score_key=None if self.cfg.decode.ctc_weight == 1.0 else "decoder",
-        )
-
-        return beam_search
+        return build_beam_search(model, self.cfg, token_list)
 
     def calculate_wer(self, video, audio, padding_mask, labels):
         labels = labels.squeeze(1)
