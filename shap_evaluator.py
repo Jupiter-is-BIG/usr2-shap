@@ -10,7 +10,7 @@ from espnet.asr.asr_utils import add_results_to_json
 from espnet.nets.pytorch_backend.transformer.mask import subsequent_mask
 from metrics import WER
 from utils.beam_search_utils import build_beam_search
-from utils.utils import ids_to_str, UNIGRAM1000_LIST
+from utils.utils import ids_to_str, strip_compile_prefix, UNIGRAM1000_LIST
 
 IGNORE_INDEX = -1
 
@@ -45,17 +45,29 @@ class SHAPEvaluator(LightningModule):
         super().__init__()
         self.cfg = cfg
 
-        if cfg.compile_model:
-            self.model = torch.compile(instantiate(cfg.model.obj, cfg))
-        else:
-            self.model = instantiate(cfg.model.obj, cfg)
+        model = instantiate(cfg.model.obj, cfg)
 
         if cfg.model.pretrained_model_path:
             if ".ckpt" in cfg.model.pretrained_model_path:
                 ckpt = torch.load(cfg.model.pretrained_model_path, map_location="cpu", weights_only=False)["state_dict"]
             else:
                 ckpt = torch.load(cfg.model.pretrained_model_path, map_location="cpu")
-            self.model.load_state_dict(ckpt, strict=False)
+            # Load into the plain (uncompiled) module first, regardless of compile_model:
+            # a checkpoint saved from a torch.compile-wrapped model has every key
+            # prefixed with '_orig_mod.', which only matches a compiled module's
+            # state_dict. Stripping it and loading before compiling keeps key-matching
+            # correct either way. See utils.utils.strip_compile_prefix.
+            missing, unexpected = model.load_state_dict(strip_compile_prefix(ckpt), strict=False)
+            if missing or unexpected:
+                print(
+                    f"WARNING: load_state_dict found {len(missing)} missing and "
+                    f"{len(unexpected)} unexpected keys -- checkpoint may not have "
+                    "loaded correctly. First few of each:"
+                )
+                print("  missing:", missing[:5])
+                print("  unexpected:", unexpected[:5])
+
+        self.model = torch.compile(model) if cfg.compile_model else model
 
         self.ignore_id = IGNORE_INDEX
         self.token_list = UNIGRAM1000_LIST

@@ -14,9 +14,10 @@ hydra:
 project_name: usr2_shap
 num_workers: 4
 log_wandb: False
-# torch.compile fights per-coalition dynamic masking (constant recompilation
-# guard failures) and the SHAP loop bypasses the compiled top-level forward
-# anyway (it calls into encoder/decoder submodules directly), so it's off
-# by default for SHAP runs.
+# The SHAP loop calls encoder/decoder submodule methods directly, never the
+# top-level compiled forward(), so torch.compile buys nothing here -- off by
+# default to keep startup simple. (Checkpoint loading is correct either way:
+# shap_evaluator.py loads weights into the plain module before optionally
+# compiling, so a checkpoint saved from a compiled model still loads right.)
 compile_model: False
 gpus:

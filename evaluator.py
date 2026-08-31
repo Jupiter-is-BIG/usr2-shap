@@ -6,7 +6,7 @@ from espnet.asr.asr_utils import add_results_to_json, torch_load
 from espnet.nets.pytorch_backend.nets_utils import make_non_pad_mask
 from metrics import WER
 from utils.beam_search_utils import build_beam_search
-from utils.utils import ids_to_str, set_requires_grad, UNIGRAM1000_LIST
+from utils.utils import ids_to_str, set_requires_grad, strip_compile_prefix, UNIGRAM1000_LIST
 
 
 class USREvaluator(LightningModule):
@@ -14,17 +14,21 @@ class USREvaluator(LightningModule):
         super().__init__()
         self.cfg = cfg
 
-        if cfg.compile_model:
-            self.model = torch.compile(instantiate(cfg.model.obj, cfg))
-        else:
-            self.model = instantiate(cfg.model.obj, cfg)
+        model = instantiate(cfg.model.obj, cfg)
 
         if cfg.model.pretrained_model_path:
             if ".ckpt" in cfg.model.pretrained_model_path:
                 ckpt = torch.load(cfg.model.pretrained_model_path, map_location="cpu", weights_only=False)["state_dict"]
             else:
                 ckpt = torch.load(cfg.model.pretrained_model_path, map_location="cpu")
-            self.model.load_state_dict(ckpt, strict=False)
+            # Load into the plain (uncompiled) module first, regardless of compile_model:
+            # a checkpoint saved from a torch.compile-wrapped model has every key
+            # prefixed with '_orig_mod.', which only matches a compiled module's
+            # state_dict. Stripping it and loading before compiling keeps key-matching
+            # correct either way. See utils.utils.strip_compile_prefix.
+            model.load_state_dict(strip_compile_prefix(ckpt), strict=False)
+
+        self.model = torch.compile(model) if cfg.compile_model else model
 
         self.ignore_id = -1
         self.beam_search_video = self.get_beam_search(self.model.model.backbone)
