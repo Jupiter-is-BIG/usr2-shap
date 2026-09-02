@@ -51,7 +51,7 @@ class SHAPEvaluator(LightningModule):
             if ".ckpt" in cfg.model.pretrained_model_path:
                 ckpt = torch.load(cfg.model.pretrained_model_path, map_location="cpu", weights_only=False)["state_dict"]
             else:
-                ckpt = torch.load(cfg.model.pretrained_model_path, map_location="cpu")
+                ckpt = torch.load(cfg.model.pretrained_model_path, map_location="cpu", weights_only=False)
             # Load into the plain (uncompiled) module first, regardless of compile_model:
             # a checkpoint saved from a torch.compile-wrapped model has every key
             # prefixed with '_orig_mod.', which only matches a compiled module's
